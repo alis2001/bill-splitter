@@ -1,0 +1,32 @@
+# Development overrides for faster development
+services:
+  api-gateway:
+    volumes:
+      - ./services/api-gateway/src:/app/src
+      - ./services/api-gateway/package.json:/app/package.json
+    environment:
+      - NODE_ENV=development
+      - DEBUG=*
+    command: npm run dev
+
+  auth-service:
+    volumes:
+      - ./services/auth-service/src:/app/src
+      - ./services/shared:/app/shared
+    build:
+      target: development
+
+  bill-service:
+    volumes:
+      - ./services/bill-service/src:/app/src
+      - ./services/shared:/app/shared
+    build:
+      target: development
+
+  frontend:
+    volumes:
+      - ./frontend/mobile:/app
+      - /app/node_modules
+    environment:
+      - FAST_REFRESH=true
+      - REACT_NATIVE_PACKAGER_HOSTNAME=0.0.0.0

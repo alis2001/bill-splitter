@@ -1,0 +1,238 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # DATABASE SERVICES
+  # ===========================================
+  
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${APP_NAME:-bill-splitter}_postgres
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - bill_splitter_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-40s}
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${APP_NAME:-bill-splitter}_redis
+    restart: ${RESTART_POLICY:-unless-stopped}
+    command: >
+      redis-server 
+      --appendonly yes 
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - bill_splitter_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+
+  # ===========================================
+  # API GATEWAY (Node.js + Express)
+  # ===========================================
+  
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+      target: ${ENVIRONMENT:-development}
+    container_name: ${APP_NAME:-bill-splitter}_api_gateway
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - NODE_ENV=${ENVIRONMENT:-development}
+      - PORT=${API_GATEWAY_PORT:-8000}
+      - HOST=${API_GATEWAY_HOST:-0.0.0.0}
+      - AUTH_SERVICE_URL=http://${AUTH_SERVICE_HOST}:${AUTH_SERVICE_PORT}
+      - BILL_SERVICE_URL=http://${BILL_SERVICE_HOST}:${BILL_SERVICE_PORT}
+      - RATE_LIMIT_WINDOW_MS=${API_RATE_LIMIT_WINDOW_MS:-900000}
+      - RATE_LIMIT_MAX=${API_RATE_LIMIT_MAX_REQUESTS:-100}
+      - CORS_ORIGIN=${API_CORS_ORIGIN:-*}
+      - REQUEST_TIMEOUT=${API_REQUEST_TIMEOUT:-30000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${API_GATEWAY_PORT:-8000}:${API_GATEWAY_PORT:-8000}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bill_splitter_network
+    volumes:
+      - ./services/api-gateway/src:/app/src:ro
+      - ./services/api-gateway/package.json:/app/package.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${API_GATEWAY_PORT:-8000}/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+
+  # ===========================================
+  # BACKEND SERVICES (C++)
+  # ===========================================
+  
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+      target: ${ENVIRONMENT:-development}
+    container_name: ${APP_NAME:-bill-splitter}_auth_service
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - PORT=${AUTH_SERVICE_PORT:-8001}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-20}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${AUTH_JWT_SECRET}
+      - JWT_EXPIRY=${AUTH_JWT_EXPIRY:-24h}
+      - BCRYPT_ROUNDS=${AUTH_BCRYPT_ROUNDS:-12}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${AUTH_SERVICE_PORT:-8001}:${AUTH_SERVICE_PORT:-8001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bill_splitter_network
+    volumes:
+      - auth_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${AUTH_SERVICE_PORT:-8001}/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+
+  bill-service:
+    build:
+      context: ./services/bill-service
+      dockerfile: Dockerfile
+      target: ${ENVIRONMENT:-development}
+    container_name: ${APP_NAME:-bill-splitter}_bill_service
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - PORT=${BILL_SERVICE_PORT:-8002}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-20}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MAX_PARTICIPANTS=${BILL_MAX_PARTICIPANTS:-50}
+      - MAX_EXPENSES=${BILL_MAX_EXPENSES:-100}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${BILL_SERVICE_PORT:-8002}:${BILL_SERVICE_PORT:-8002}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bill_splitter_network
+    volumes:
+      - bill_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BILL_SERVICE_PORT:-8002}/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+
+  # ===========================================
+  # FRONTEND (React Native)
+  # ===========================================
+  
+  frontend:
+    build:
+      context: ./frontend/mobile
+      dockerfile: Dockerfile
+      target: ${ENVIRONMENT:-development}
+    container_name: ${APP_NAME:-bill-splitter}_frontend
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - NODE_ENV=${ENVIRONMENT:-development}
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      - EXPO_PUBLIC_API_HOST=${HOST_IP}
+      - API_BASE_URL=http://${HOST_IP:-host.docker.internal}:8000
+    ports:
+      - "${FRONTEND_PORT:-8081}:8081"
+      - "19000:19000"
+      - "19001:19001"
+      - "19002:19002"
+    depends_on:
+      - api-gateway
+    networks:
+      - bill_splitter_network
+    volumes:
+      - ./frontend/mobile:/app
+      - /app/node_modules
+
+# ===========================================
+# NETWORKS
+# ===========================================
+
+networks:
+  bill_splitter_network:
+    driver: bridge
+    name: ${NETWORK_NAME:-bill_splitter_network}
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+
+# ===========================================
+# VOLUMES
+# ===========================================
+
+volumes:
+  postgres_data:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_postgres_data
+  
+  redis_data:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_redis_data
+  
+  auth_logs:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_auth_logs
+  
+  bill_logs:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_bill_logs
+  
+  frontend_cache:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_frontend_cache
