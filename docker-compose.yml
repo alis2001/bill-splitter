@@ -155,6 +155,7 @@ services:
       - MAX_PARTICIPANTS=${BILL_MAX_PARTICIPANTS:-50}
       - MAX_EXPENSES=${BILL_MAX_EXPENSES:-100}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - JWT_SECRET=${AUTH_JWT_SECRET}
     ports:
       - "${BILL_SERVICE_PORT:-8002}:${BILL_SERVICE_PORT:-8002}"
     depends_on:

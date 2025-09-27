@@ -33,8 +33,16 @@ app.use(morgan('combined'));
 const authProxy = createProxyMiddleware('/api/auth', {
   target: AUTH_SERVICE_URL,
   changeOrigin: true,
+  timeout: 30000,
   pathRewrite: {
     '^/api/auth': ''
+  },
+  onError: (err, req, res) => {
+    console.log('Auth proxy error:', err.message);
+    res.status(500).json({ error: 'Proxy error' });
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    console.log('Proxying auth request:', req.method, req.url);
   }
 });
 
@@ -54,12 +62,14 @@ const contactsProxy = createProxyMiddleware('/api/contacts', {
   }
 });
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
+// MOVE THESE LINES UP - BEFORE app.use(express.json())
 app.use('/api/auth', authProxy);
 app.use('/api/bills', billProxy);
 app.use('/api/contacts', contactsProxy);
+
+// THEN add body parsing AFTER proxies
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const limiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MS,

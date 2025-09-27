@@ -39,6 +39,8 @@ add_executable(bill-service
     src/events_controller.cpp
     src/expenses_controller.cpp
     src/participants_controller.cpp
+    src/settlements_controller.cpp
+    src/split_calculator.cpp
     src/utils.cpp
 )
 

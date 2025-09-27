@@ -10,7 +10,7 @@
 #include "expenses_controller.h"
 #include "participants_controller.h"
 #include "utils.h"
-
+#include "settlements_controller.h"
 using json = nlohmann::json;
 
 int main() {
@@ -21,9 +21,25 @@ int main() {
     auto redis = std::make_shared<RedisClient>();
     auto auth = std::make_shared<AuthMiddleware>(redis);
     
+    // CONNECT TO SERVICES BEFORE CREATING CONTROLLERS
+    if (!db->connect()) {
+        std::cerr << "Failed to connect to database" << std::endl;
+        return 1;
+    }
+    
+    if (!redis->connect()) {
+        std::cerr << "Failed to connect to Redis" << std::endl;
+        return 1;
+    }
+    
+    std::cout << "Database and Redis connected successfully" << std::endl;
+    
     auto events_controller = std::make_shared<EventsController>(db, auth);
     auto expenses_controller = std::make_shared<ExpensesController>(db, auth);
     auto participants_controller = std::make_shared<ParticipantsController>(db, auth);
+    auto settlements_controller = std::make_shared<SettlementsController>(db, auth);
+
+    std::cout << "Controllers initialized successfully" << std::endl;
     
     httplib::Server server;
     
@@ -46,10 +62,10 @@ int main() {
         res.set_content(response.dump(), "application/json");
     });
 
-    // Events routes
     server.Get("/events", [events_controller](const httplib::Request& req, httplib::Response& res) {
         events_controller->getEvents(req, res);
     });
+
     
     server.Post("/events", [events_controller](const httplib::Request& req, httplib::Response& res) {
         events_controller->createEvent(req, res);
@@ -100,15 +116,35 @@ int main() {
     server.Delete("/events/([0-9a-fA-F-]+)/participants/([0-9a-fA-F-]+)", [participants_controller](const httplib::Request& req, httplib::Response& res) {
         participants_controller->removeParticipant(req, res);
     });
-    
-    server.set_error_handler([](const httplib::Request&, httplib::Response& res) {
-        json error = {
-            {"error", "Route not found"},
-            {"status", 404}
-        };
-        res.status = 404;
-        res.set_content(error.dump(), "application/json");
+
+    server.Get("/events/([0-9a-fA-F-]+)/settlements", [settlements_controller](const httplib::Request& req, httplib::Response& res) {
+        settlements_controller->getEventSettlements(req, res);
     });
+
+    server.Post("/events/([0-9a-fA-F-]+)/payments", [settlements_controller](const httplib::Request& req, httplib::Response& res) {
+        settlements_controller->recordPayment(req, res);
+    });
+
+    server.Get("/events/([0-9a-fA-F-]+)/settlements", [settlements_controller](const httplib::Request& req, httplib::Response& res) {
+        settlements_controller->getEventSettlements(req, res);
+    });
+
+    server.Post("/events/([0-9a-fA-F-]+)/payments", [settlements_controller](const httplib::Request& req, httplib::Response& res) {
+        settlements_controller->recordPayment(req, res);
+    });
+
+    server.Get("/users/balance", [settlements_controller](const httplib::Request& req, httplib::Response& res) {
+        settlements_controller->getUserBalance(req, res);
+    });
+    
+    //server.set_error_handler([](const httplib::Request&, httplib::Response& res) {
+    //    json error = {
+    //        {"error", "Route not found"},
+    //        {"status", 404}
+    //    };
+    //    res.status = 404;
+    //    res.set_content(error.dump(), "application/json");
+    //});
     
     std::cout << "Bill Service starting on " << host << ":" << port << std::endl;
     

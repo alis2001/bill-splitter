@@ -110,12 +110,12 @@ json Database::getEvent(const std::string& eventId) {
         pqxx::work txn(*conn_);
         
         pqxx::result result = txn.exec_params(
-            "SELECT e.id, e.creator_id, e.name, e.description, e.event_type, "
-            "e.status, e.start_date, e.end_date, e.created_at, e.updated_at, "
-            "u.name as creator_name, u.family_name as creator_family_name "
-            "FROM events e "
-            "JOIN users u ON e.creator_id = u.id "
-            "WHERE e.id = $1", eventId
+            "SELECT e.id, e.payer_id, e.amount, e.description, e.split_type, e.expense_date, "
+            "e.created_at, u.name as payer_name, u.family_name as payer_family_name "
+            "FROM expenses e "
+            "JOIN users u ON e.payer_id = u.id "
+            "WHERE e.event_id = $1 "
+            "ORDER BY e.expense_date DESC", eventId
         );
         
         if (result.size() == 0) {
@@ -333,7 +333,7 @@ json Database::getExpensesByEvent(const std::string& eventId) {
         pqxx::work txn(*conn_);
         
         pqxx::result result = txn.exec_params(
-            "SELECT e.id, e.amount, e.description, e.split_type, e.expense_date, "
+            "SELECT e.id, e.payer_id, e.amount, e.description, e.split_type, e.expense_date, "
             "e.created_at, u.name as payer_name, u.family_name as payer_family_name "
             "FROM expenses e "
             "JOIN users u ON e.payer_id = u.id "
@@ -346,14 +346,15 @@ json Database::getExpensesByEvent(const std::string& eventId) {
         for (const auto& row : result) {
             json expense = {
                 {"id", row[0].c_str()},
-                {"amount", row[1].as<double>()},
-                {"description", row[2].c_str()},
-                {"split_type", row[3].c_str()},
-                {"expense_date", row[4].c_str()},
-                {"created_at", row[5].c_str()},
+                {"payer_id", row[1].c_str()},         // NEW: payer_id
+                {"amount", row[2].as<double>()},      // FIXED: was row[1], now row[2]
+                {"description", row[3].c_str()},      // FIXED: was row[2], now row[3]
+                {"split_type", row[4].c_str()},       // FIXED: was row[3], now row[4]
+                {"expense_date", row[5].c_str()},     // FIXED: was row[4], now row[5]
+                {"created_at", row[6].c_str()},       // FIXED: was row[5], now row[6]
                 {"payer", {
-                    {"name", row[6].c_str()},
-                    {"family_name", row[7].c_str()}
+                    {"name", row[7].c_str()},         // FIXED: was row[6], now row[7]
+                    {"family_name", row[8].c_str()}   // FIXED: was row[7], now row[8]
                 }}
             };
             

@@ -118,33 +118,41 @@ json AuthMiddleware::createAuthErrorResponse(const std::string& message, int sta
 
 bool AuthMiddleware::verifyJWT(const std::string& token, std::string& userId, std::string& email) {
     try {
+        std::cout << "Verifying JWT with secret: " << jwtSecret_.substr(0, 10) << "..." << std::endl;
+        
         // Decode and verify JWT
         auto decoded = jwt::decode(token);
+        std::cout << "JWT decoded successfully" << std::endl;
         
         // Verify signature
         auto verifier = jwt::verify()
-            .allow_algorithm(jwt::algorithm::hs256{jwtSecret_})
-            .with_issuer("bill-splitter");
+            .allow_algorithm(jwt::algorithm::hs256{jwtSecret_});
         
+        std::cout << "About to verify signature..." << std::endl;
         verifier.verify(decoded);
+        std::cout << "Signature verified successfully" << std::endl;
         
         // Extract claims
         if (decoded.has_payload_claim("userId")) {
             userId = decoded.get_payload_claim("userId").as_string();
+            std::cout << "Extracted userId: " << userId << std::endl;
         } else {
+            std::cout << "No userId claim found" << std::endl;
             return false;
         }
         
         if (decoded.has_payload_claim("email")) {
             email = decoded.get_payload_claim("email").as_string();
+            std::cout << "Extracted email: " << email << std::endl;
         } else {
+            std::cout << "No email claim found" << std::endl;
             return false;
         }
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "JWT verification error: " << e.what() << std::endl;
+        std::cerr << "JWT verification detailed error: " << e.what() << std::endl;
         return false;
     }
 }
