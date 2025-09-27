@@ -225,7 +225,7 @@ services:
     environment:
       - NODE_ENV=${ENVIRONMENT:-development}
       - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
-      - EXPO_PUBLIC_API_HOST=${HOST_IP}
+      - REACT_NATIVE_PACKAGER_HOSTNAME=${HOST_IP}
       - API_BASE_URL=http://${HOST_IP:-host.docker.internal}:8000
     ports:
       - "${FRONTEND_PORT:-8081}:8081"
