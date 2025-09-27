@@ -21,8 +21,10 @@ const pool = new Pool({
 });
 
 const redisClient = redis.createClient({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
+  socket: {
+    host: process.env.REDIS_HOST || 'redis',
+    port: process.env.REDIS_PORT || 6379,
+  },
   password: process.env.REDIS_PASSWORD,
 });
 
@@ -34,10 +36,11 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 
 const registerSchema = Joi.object({
-  username: Joi.string().min(3).max(50).required(),
+  name: Joi.string().min(1).max(50).required(),
+  family_name: Joi.string().min(1).max(50).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  full_name: Joi.string().min(2).max(100).required(),
+  repeat_password: Joi.string().valid(Joi.ref('password')).required(),
 });
 
 const loginSchema = Joi.object({
@@ -61,11 +64,11 @@ app.post('/register', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { username, email, password, full_name } = value;
+    const { name, family_name, email, password } = value;
 
     const existingUser = await pool.query(
-      'SELECT id FROM users WHERE email = $1 OR username = $2',
-      [email, username]
+      'SELECT id FROM users WHERE email = $1',
+      [email]
     );
 
     if (existingUser.rows.length > 0) {
@@ -76,8 +79,8 @@ app.post('/register', async (req, res) => {
     const password_hash = await bcrypt.hash(password, saltRounds);
 
     const result = await pool.query(
-      'INSERT INTO users (username, email, password_hash, full_name) VALUES ($1, $2, $3, $4) RETURNING id, username, email, full_name, created_at',
-      [username, email, password_hash, full_name]
+      'INSERT INTO users (name, family_name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, family_name, email, created_at',
+      [name, family_name, email, password_hash]
     );
 
     const user = result.rows[0];
@@ -96,9 +99,9 @@ app.post('/register', async (req, res) => {
       success: true,
       user: {
         id: user.id,
-        username: user.username,
+        name: user.name,
+        family_name: user.family_name,
         email: user.email,
-        full_name: user.full_name,
         created_at: user.created_at
       },
       token
@@ -119,7 +122,7 @@ app.post('/login', async (req, res) => {
     const { email, password } = value;
 
     const result = await pool.query(
-      'SELECT id, username, email, password_hash, full_name, is_active FROM users WHERE email = $1',
+      'SELECT id, name, family_name, email, password_hash, is_active FROM users WHERE email = $1',
       [email]
     );
 
@@ -138,11 +141,6 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    await pool.query(
-      'UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [user.id]
-    );
-
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
@@ -158,9 +156,9 @@ app.post('/login', async (req, res) => {
       success: true,
       user: {
         id: user.id,
-        username: user.username,
-        email: user.email,
-        full_name: user.full_name
+        name: user.name,
+        family_name: user.family_name,
+        email: user.email
       },
       token
     });
@@ -188,7 +186,7 @@ app.post('/verify', async (req, res) => {
     const { userId, email } = JSON.parse(cachedData);
 
     const result = await pool.query(
-      'SELECT id, username, email, full_name, is_active FROM users WHERE id = $1',
+      'SELECT id, name, family_name, email, is_active FROM users WHERE id = $1',
       [userId]
     );
 

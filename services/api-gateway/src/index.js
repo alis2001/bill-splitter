@@ -9,20 +9,17 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Environment variables
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const BILL_SERVICE_URL = process.env.BILL_SERVICE_URL || 'http://bill-service:8002';
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000; // 15 minutes
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 100;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
-// Security middleware
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration
 app.use(cors({
   origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(','),
   credentials: true,
@@ -30,14 +27,30 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Logging
 app.use(morgan('combined'));
 
-// Body parsing
+const authProxy = createProxyMiddleware('/api/auth', {
+  target: AUTH_SERVICE_URL,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/auth': ''
+  }
+});
+
+const billProxy = createProxyMiddleware('/api/bills', {
+  target: BILL_SERVICE_URL,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/bills': ''
+  }
+});
+
+app.use('/api/auth', authProxy);
+app.use('/api/bills', billProxy);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
 const limiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MS,
   max: RATE_LIMIT_MAX,
@@ -50,7 +63,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
@@ -62,7 +74,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Gateway routes
 app.get('/', (req, res) => {
   res.json({
     message: 'Bill Splitter API Gateway',
@@ -78,49 +89,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Proxy middleware for Auth Service
-const authProxy = createProxyMiddleware({
-  target: AUTH_SERVICE_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/auth': ''
-  },
-  onError: (err, req, res) => {
-    console.error('Auth Service Proxy Error:', err.message);
-    res.status(503).json({
-      error: 'Auth service unavailable',
-      message: 'Please try again later'
-    });
-  },
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`Proxying ${req.method} ${req.url} to Auth Service`);
-  }
-});
-
-// Proxy middleware for Bill Service
-const billProxy = createProxyMiddleware({
-  target: BILL_SERVICE_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/bills': ''
-  },
-  onError: (err, req, res) => {
-    console.error('Bill Service Proxy Error:', err.message);
-    res.status(503).json({
-      error: 'Bill service unavailable',
-      message: 'Please try again later'
-    });
-  },
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`Proxying ${req.method} ${req.url} to Bill Service`);
-  }
-});
-
-// Apply proxy middleware
-app.use('/api/auth', authProxy);
-app.use('/api/bills', billProxy);
-
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -136,7 +104,6 @@ app.use('*', (req, res) => {
   });
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error('Gateway Error:', err);
   res.status(500).json({
@@ -145,7 +112,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
 app.listen(PORT, HOST, () => {
   console.log(`🚀 API Gateway running on http://${HOST}:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -154,7 +120,6 @@ app.listen(PORT, HOST, () => {
   console.log(`⚡ Rate Limit: ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS/1000}s`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('📴 SIGTERM received, shutting down gracefully');
   process.exit(0);
