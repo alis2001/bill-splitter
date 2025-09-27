@@ -11,6 +11,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:8001';
 const BILL_SERVICE_URL = process.env.BILL_SERVICE_URL || 'http://bill-service:8002';
+const CONTACTS_SERVICE_URL = process.env.CONTACTS_SERVICE_URL || 'http://contacts-service:8003';
 const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 100;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -45,11 +46,20 @@ const billProxy = createProxyMiddleware('/api/bills', {
   }
 });
 
-app.use('/api/auth', authProxy);
-app.use('/api/bills', billProxy);
+const contactsProxy = createProxyMiddleware('/api/contacts', {
+  target: CONTACTS_SERVICE_URL,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/contacts': ''
+  }
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use('/api/auth', authProxy);
+app.use('/api/bills', billProxy);
+app.use('/api/contacts', contactsProxy);
 
 const limiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MS,
@@ -80,7 +90,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     services: {
       auth: '/api/auth/*',
-      bills: '/api/bills/*'
+      bills: '/api/bills/*',
+      contacts: '/api/contacts/*'
     },
     endpoints: {
       health: '/health',
@@ -118,6 +129,7 @@ app.listen(PORT, HOST, () => {
   console.log(`🔗 Auth Service: ${AUTH_SERVICE_URL}`);
   console.log(`🔗 Bill Service: ${BILL_SERVICE_URL}`);
   console.log(`⚡ Rate Limit: ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS/1000}s`);
+  console.log(`🔗 Contacts Service: ${CONTACTS_SERVICE_URL}`);
 });
 
 process.on('SIGTERM', () => {

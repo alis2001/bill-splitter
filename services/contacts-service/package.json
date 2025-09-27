@@ -1,0 +1,31 @@
+{
+  "name": "bill-splitter-contacts-service",
+  "version": "1.0.0",
+  "description": "Contacts Service for Bill Splitter Application",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "morgan": "^1.10.0",
+    "pg": "^8.11.3",
+    "redis": "^4.6.8",
+    "joi": "^17.9.2",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "contacts",
+    "microservice",
+    "bill-splitter"
+  ],
+  "author": "Bill Splitter Team",
+  "license": "MIT"
+}

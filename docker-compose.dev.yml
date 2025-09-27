@@ -23,6 +23,13 @@ services:
     build:
       target: development
 
+  contacts-service:
+    volumes:
+      - ./services/contacts-service/src:/app/src
+      - ./services/shared:/app/shared
+    build:
+      target: development
+
   frontend:
     volumes:
       - ./frontend/mobile:/app

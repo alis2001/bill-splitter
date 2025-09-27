@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.API_BASE_URL || 'http://192.168.1.100:8000';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://192.168.1.123:8000';
 
 const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api/auth`,

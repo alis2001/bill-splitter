@@ -72,6 +72,7 @@ services:
       - CORS_ORIGIN=${API_CORS_ORIGIN:-*}
       - REQUEST_TIMEOUT=${API_REQUEST_TIMEOUT:-30000}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CONTACTS_SERVICE_URL=http://${CONTACTS_SERVICE_HOST}:${CONTACTS_SERVICE_PORT}
     ports:
       - "${API_GATEWAY_PORT:-8000}:${API_GATEWAY_PORT:-8000}"
     depends_on:
@@ -171,6 +172,44 @@ services:
       timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
       retries: ${HEALTH_CHECK_RETRIES:-3}
 
+  contacts-service:
+    build:
+      context: ./services/contacts-service
+      dockerfile: Dockerfile
+      target: ${ENVIRONMENT:-development}
+    container_name: ${APP_NAME:-bill-splitter}_contacts_service
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - PORT=${CONTACTS_SERVICE_PORT:-8003}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-20}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${AUTH_JWT_SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "${CONTACTS_SERVICE_PORT:-8003}:${CONTACTS_SERVICE_PORT:-8003}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bill_splitter_network
+    volumes:
+      - contacts_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${CONTACTS_SERVICE_PORT:-8003}/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+
   # ===========================================
   # FRONTEND (React Native)
   # ===========================================
@@ -236,3 +275,7 @@ volumes:
   frontend_cache:
     driver: local
     name: ${APP_NAME:-bill-splitter}_frontend_cache
+
+  contacts_logs:
+    driver: local
+    name: ${APP_NAME:-bill-splitter}_contacts_logs
